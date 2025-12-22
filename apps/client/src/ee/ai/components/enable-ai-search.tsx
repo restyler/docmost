@@ -10,20 +10,33 @@ import useLicense from "@/ee/hooks/use-license.tsx";
 import { useQuery } from "@tanstack/react-query";
 import api from "@/lib/api-client.ts";
 import { IconInfoCircle } from "@tabler/icons-react";
+import { timeAgo } from "@/lib/time.ts";
+import { Link } from "react-router-dom";
+import { buildPageUrl } from "@/features/page/page.utils.ts";
 
-type AiStatus =
-  | {
-      embeddingsTable: boolean;
-      flavor: string;
-      driver: string;
-      queueCounts?: Record<string, number>;
-      pageCounts?: {
-        totalPages?: number;
-        pagesWithEmbeddings?: number;
-        pagesWithoutEmbeddings?: number;
-      };
-    }
-  | undefined;
+type AiStatus = {
+  embeddingsTable: boolean;
+  flavor: string;
+  driver: string;
+  queueCounts?: Record<string, number>;
+  pageCounts?: {
+    totalPages?: number;
+    pagesWithEmbeddings?: number;
+    pagesWithoutEmbeddings?: number;
+  };
+  chunkStats?: {
+    totalChunks: number;
+    recent: Array<{
+      pageId: string;
+      title: string | null;
+      slugId: string | null;
+      spaceSlug: string | null;
+      chunkIndex: number;
+      createdAt: string;
+      link: string;
+    }>;
+  };
+};
 
 export default function EnableAiSearch({ status }: { status?: AiStatus }) {
   const { t } = useTranslation();
@@ -32,17 +45,7 @@ export default function EnableAiSearch({ status }: { status?: AiStatus }) {
     queryKey: ["ai-status"],
     queryFn: async () => {
       const res = await api.get("/ai/status");
-      return res.data as {
-        embeddingsTable: boolean;
-        flavor: string;
-        driver: string;
-        queueCounts?: Record<string, number>;
-        pageCounts?: {
-          totalPages?: number;
-          pagesWithEmbeddings?: number;
-          pagesWithoutEmbeddings?: number;
-        };
-      };
+      return res.data as AiStatus;
     },
     enabled: !status,
   });
@@ -104,6 +107,48 @@ export default function EnableAiSearch({ status }: { status?: AiStatus }) {
             {t("Without embeddings")}:{" "}
             {effectiveStatus.pageCounts.pagesWithoutEmbeddings ?? 0}
           </Text>
+        </Alert>
+      )}
+
+      {effectiveStatus?.chunkStats && (
+        <Alert
+          icon={<IconInfoCircle />}
+          color="gray"
+          mt="md"
+          title={t("Embedding chunks")}
+        >
+          <Text size="sm" c="dimmed">
+            {t("Total chunks")}: {effectiveStatus.chunkStats.totalChunks ?? 0}
+          </Text>
+          {effectiveStatus.chunkStats.recent?.length ? (
+            <div style={{ marginTop: 8 }}>
+              <Text size="xs" fw={600} c="dimmed">
+                {t("Recent chunks")}
+              </Text>
+              {effectiveStatus.chunkStats.recent.map((chunk) => (
+                <Group key={`${chunk.pageId}-${chunk.chunkIndex}`} gap="xs" mt={4}>
+                  <Text size="sm" style={{ flex: 1 }} lineClamp={1}>
+                    {chunk.title || chunk.pageId}
+                  </Text>
+                  <Text size="xs" c="dimmed">
+                    {t("Chunk")} #{chunk.chunkIndex + 1}
+                  </Text>
+                  <Text size="xs" c="dimmed">
+                    {timeAgo(new Date(chunk.createdAt))}
+                  </Text>
+                  {chunk.spaceSlug && (
+                    <Text
+                      size="xs"
+                      component={Link}
+                      to={buildPageUrl(chunk.spaceSlug, chunk.slugId || chunk.pageId, chunk.title || "")}
+                    >
+                      {t("View")}
+                    </Text>
+                  )}
+                </Group>
+              ))}
+            </div>
+          ) : null}
         </Alert>
       )}
     </>

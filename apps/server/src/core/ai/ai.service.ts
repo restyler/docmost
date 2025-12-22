@@ -344,6 +344,20 @@ export class AiService {
       pagesWithEmbeddings?: number;
       pagesWithoutEmbeddings?: number;
     } = {};
+    let chunkStats:
+      | {
+          totalChunks: number;
+          recent: Array<{
+            pageId: string;
+            title: string | null;
+            slugId: string | null;
+            spaceSlug: string | null;
+            chunkIndex: number;
+            createdAt: Date;
+            link: string;
+          }>;
+        }
+      | undefined;
     try {
       queueCounts = await this.aiQueue.getJobCounts(
         'waiting',
@@ -388,6 +402,48 @@ export class AiService {
           pagesWithEmbeddings,
           pagesWithoutEmbeddings,
         };
+
+        const totalChunksRes = await this.db
+          .selectFrom('pageEmbeddings')
+          .select((eb) => eb.fn.count<number>('id').as('count'))
+          .where('workspaceId', '=', workspaceId)
+          .where('deletedAt', 'is', null)
+          .executeTakeFirst();
+
+        const recent = await this.db
+          .selectFrom('pageEmbeddings as pe')
+          .innerJoin('pages as p', 'p.id', 'pe.pageId')
+          .innerJoin('spaces as s', 's.id', 'p.spaceId')
+          .select([
+            'pe.pageId as pageId',
+            'pe.chunkIndex as chunkIndex',
+            'pe.createdAt as createdAt',
+            'p.title as title',
+            'p.slugId as slugId',
+            's.slug as spaceSlug',
+          ])
+          .where('pe.workspaceId', '=', workspaceId)
+          .where('pe.deletedAt', 'is', null)
+          .where('p.deletedAt', 'is', null)
+          .orderBy('pe.createdAt', 'desc')
+          .limit(3)
+          .execute();
+
+        chunkStats = {
+          totalChunks: Number(totalChunksRes?.count ?? 0),
+          recent: recent.map((r) => ({
+            pageId: r.pageId,
+            title: (r as any).title,
+            slugId: (r as any).slugId,
+            spaceSlug: (r as any).spaceSlug,
+            chunkIndex: r.chunkIndex,
+            createdAt: r.createdAt as Date,
+            link:
+              r.slugId || r.pageId
+                ? `${this.PAGE_LINK_PREFIX}${(r as any).slugId ?? r.pageId}`
+                : '',
+          })),
+        };
       } catch (err) {
         this.logger.debug(`Failed to read embedding page counts`, err as Error);
       }
@@ -399,6 +455,7 @@ export class AiService {
       embeddingsTable,
       queueCounts,
       pageCounts,
+      chunkStats,
     };
   }
 }
