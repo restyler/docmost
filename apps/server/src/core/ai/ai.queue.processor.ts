@@ -1,4 +1,4 @@
-import { Processor, WorkerHost, OnQueueActive } from '@nestjs/bullmq';
+import { Processor, WorkerHost } from '@nestjs/bullmq';
 import { QueueJob, QueueName } from '../../integrations/queue/constants';
 import { InjectKysely } from 'nestjs-kysely';
 import { KyselyDB } from '@docmost/db/types/kysely.types';
@@ -29,11 +29,6 @@ export class AiQueueProcessor extends WorkerHost {
     private readonly openAiService: OpenAiService,
   ) {
     super();
-  }
-
-  @OnQueueActive()
-  onActive(job: any) {
-    this.logger.debug(`Processing AI job ${job.name} id=${job.id}`);
   }
 
   async process(job: any): Promise<void> {

@@ -6,17 +6,12 @@ import { EnvironmentModule } from '../../integrations/environment/environment.mo
 import { BullModule } from '@nestjs/bullmq';
 import { QueueName } from '../../integrations/queue/constants';
 import { AiQueueProcessor } from './ai.queue.processor';
-import { KyselyModule } from 'nestjs-kysely';
-import { DatabaseModule } from '@docmost/db/database.module';
 import { PageRepo } from '@docmost/db/repos/page/page.repo';
+import { DatabaseModule } from '@docmost/db/database.module';
 
 @Module({
   imports: [
     EnvironmentModule,
-    BullModule.registerQueue({
-      name: QueueName.AI_QUEUE,
-    }),
-    KyselyModule.forFeature(),
     DatabaseModule,
   ],
   controllers: [AiController],
