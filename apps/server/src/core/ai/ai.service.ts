@@ -188,7 +188,9 @@ export class AiService {
 
         const pagesWithEmbeddingsRes = await this.db
           .selectFrom('pageEmbeddings')
-          .select((eb) => eb.fn.countDistinct<number>('pageId').as('count'))
+          .select((eb) =>
+            sql<number>`count(distinct ${eb.ref('pageId')})`.as('count'),
+          )
           .where('workspaceId', '=', workspaceId)
           .where('deletedAt', 'is', null)
           .executeTakeFirst();
