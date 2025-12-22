@@ -110,6 +110,11 @@ export class EnvironmentVariables {
   AI_DRIVER: string;
 
   @IsOptional()
+  @IsIn(['oss', 'enterprise'])
+  @IsString()
+  AI_MODULE_FLAVOR: string;
+
+  @IsOptional()
   @ValidateIf((obj) => obj.AI_DRIVER)
   @IsString()
   @IsNotEmpty()

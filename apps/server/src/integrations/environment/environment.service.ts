@@ -244,6 +244,11 @@ export class EnvironmentService {
     return this.configService.get<string>('AI_DRIVER');
   }
 
+  getAiModuleFlavor(): 'oss' | 'enterprise' {
+    const flavor = this.configService.get<string>('AI_MODULE_FLAVOR', 'oss');
+    return (flavor || 'oss').toLowerCase() as 'oss' | 'enterprise';
+  }
+
   getAiEmbeddingModel(): string {
     return this.configService.get<string>('AI_EMBEDDING_MODEL');
   }
