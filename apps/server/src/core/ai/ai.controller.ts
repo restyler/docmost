@@ -64,8 +64,8 @@ export class AiController {
 
   @HttpCode(HttpStatus.OK)
   @Get('status')
-  async status() {
-    return this.aiService.status();
+  async status(@AuthWorkspace() workspace: Workspace) {
+    return this.aiService.status(workspace?.id);
   }
 }
 

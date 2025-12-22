@@ -157,9 +157,14 @@ export class AiService {
     );
   }
 
-  async status() {
+  async status(workspaceId?: string) {
     const embeddingsTable = await isPageEmbeddingsTableExists(this.db);
     let queueCounts: Record<string, number> = {};
+    let pageCounts: {
+      totalPages?: number;
+      pagesWithEmbeddings?: number;
+      pagesWithoutEmbeddings?: number;
+    } = {};
     try {
       queueCounts = await this.aiQueue.getJobCounts(
         'waiting',
@@ -171,11 +176,46 @@ export class AiService {
     } catch (err) {
       this.logger.debug(`Failed to read AI queue counts`, err as Error);
     }
+
+    if (workspaceId && embeddingsTable) {
+      try {
+        const totalPagesRes = await this.db
+          .selectFrom('pages')
+          .select((eb) => eb.fn.count<number>('id').as('count'))
+          .where('workspaceId', '=', workspaceId)
+          .where('deletedAt', 'is', null)
+          .executeTakeFirst();
+
+        const pagesWithEmbeddingsRes = await this.db
+          .selectFrom('pageEmbeddings')
+          .select((eb) => eb.fn.countDistinct<number>('pageId').as('count'))
+          .where('workspaceId', '=', workspaceId)
+          .where('deletedAt', 'is', null)
+          .executeTakeFirst();
+
+        const totalPages = totalPagesRes?.count ?? 0;
+        const pagesWithEmbeddings = pagesWithEmbeddingsRes?.count ?? 0;
+        const pagesWithoutEmbeddings = Math.max(
+          0,
+          totalPages - pagesWithEmbeddings,
+        );
+
+        pageCounts = {
+          totalPages,
+          pagesWithEmbeddings,
+          pagesWithoutEmbeddings,
+        };
+      } catch (err) {
+        this.logger.debug(`Failed to read embedding page counts`, err as Error);
+      }
+    }
+
     return {
       driver: this.environmentService.getAiDriver(),
       flavor: this.environmentService.getAiModuleFlavor(),
       embeddingsTable,
       queueCounts,
+      pageCounts,
     };
   }
 }

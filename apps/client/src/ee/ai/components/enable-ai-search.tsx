@@ -17,6 +17,11 @@ type AiStatus =
       flavor: string;
       driver: string;
       queueCounts?: Record<string, number>;
+      pageCounts?: {
+        totalPages?: number;
+        pagesWithEmbeddings?: number;
+        pagesWithoutEmbeddings?: number;
+      };
     }
   | undefined;
 
@@ -32,6 +37,11 @@ export default function EnableAiSearch({ status }: { status?: AiStatus }) {
         flavor: string;
         driver: string;
         queueCounts?: Record<string, number>;
+        pageCounts?: {
+          totalPages?: number;
+          pagesWithEmbeddings?: number;
+          pagesWithoutEmbeddings?: number;
+        };
       };
     },
     enabled: !status,
@@ -76,6 +86,23 @@ export default function EnableAiSearch({ status }: { status?: AiStatus }) {
             {t("Active")}: {effectiveStatus.queueCounts.active ?? 0} •{" "}
             {t("Completed")}: {effectiveStatus.queueCounts.completed ?? 0} •{" "}
             {t("Failed")}: {effectiveStatus.queueCounts.failed ?? 0}
+          </Text>
+        </Alert>
+      )}
+
+      {effectiveStatus && effectiveStatus.pageCounts && (
+        <Alert
+          icon={<IconInfoCircle />}
+          color="gray"
+          mt="md"
+          title={t("Page embeddings coverage")}
+        >
+          <Text size="sm" c="dimmed">
+            {t("Total pages")}: {effectiveStatus.pageCounts.totalPages ?? 0} •{" "}
+            {t("With embeddings")}:{" "}
+            {effectiveStatus.pageCounts.pagesWithEmbeddings ?? 0} •{" "}
+            {t("Without embeddings")}:{" "}
+            {effectiveStatus.pageCounts.pagesWithoutEmbeddings ?? 0}
           </Text>
         </Alert>
       )}
