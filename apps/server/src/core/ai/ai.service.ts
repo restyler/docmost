@@ -95,7 +95,7 @@ export class AiService {
 
     const contexts =
       (await isPageEmbeddingsTableExists(this.db)) && dto.workspaceId
-        ? await this.retrieveContexts(dto.query, dto.workspaceId)
+        ? await this.retrieveContexts(dto.query, dto.workspaceId, dto.spaceId)
         : [];
     const uniquePageCount = new Set(contexts.map((c) => c.pageId)).size;
 
@@ -126,7 +126,7 @@ export class AiService {
       .join(' | ')
       .slice(0, 500);
     this.logger.log(
-      `[ask] workspace=${dto.workspaceId ?? 'n/a'} ragPieces=${contexts.length} prompt="${promptPreview}"`,
+      `[ask] workspace=${dto.workspaceId ?? 'n/a'}${dto.spaceId ? ` space=${dto.spaceId}` : ''} ragPieces=${contexts.length} prompt="${promptPreview}"`,
     );
 
     // Send context metadata/sources to client early for transparency
@@ -176,7 +176,7 @@ export class AiService {
     }
   }
 
-  private async retrieveContexts(query: string, workspaceId: string) {
+  private async retrieveContexts(query: string, workspaceId: string, spaceId?: string) {
     const embeddingModel = this.environmentService.getAiEmbeddingModel();
     if (!embeddingModel) {
       this.logger.warn('[ask] AI_EMBEDDING_MODEL not set; skipping retrieval');
@@ -186,7 +186,7 @@ export class AiService {
     const queryEmbedding = await this.createEmbedding(query, embeddingModel);
     const vectorLiteral = `[${queryEmbedding.join(',')}]`;
 
-    const rows = await this.db
+    let queryBuilder = this.db
       .selectFrom('pageEmbeddings as pe')
       .innerJoin('pages as p', 'p.id', 'pe.pageId')
       .innerJoin('spaces as s', 's.id', 'p.spaceId')
@@ -206,7 +206,14 @@ export class AiService {
       ])
       .where('pe.workspaceId', '=', workspaceId)
       .where('pe.deletedAt', 'is', null)
-      .where('p.deletedAt', 'is', null)
+      .where('p.deletedAt', 'is', null);
+
+    // Filter by spaceId if provided
+    if (spaceId) {
+      queryBuilder = queryBuilder.where('pe.spaceId', '=', spaceId);
+    }
+
+    const rows = await queryBuilder
       .orderBy(sql`pe.embedding <-> ${sql`${vectorLiteral}::vector`}`)
       .limit(8)
       .execute();
@@ -251,7 +258,7 @@ export class AiService {
     });
 
     this.logger.log(
-      `[ask] retrieved ${contexts.length} context chunks for workspace=${workspaceId}`,
+      `[ask] retrieved ${contexts.length} context chunks for workspace=${workspaceId}${spaceId ? ` space=${spaceId}` : ''}`,
     );
 
     return contexts;

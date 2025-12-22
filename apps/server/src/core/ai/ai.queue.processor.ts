@@ -207,17 +207,32 @@ export class AiQueueProcessor extends WorkerHost {
       return vector;
     };
 
-    const isTimeoutError = (err: unknown) => {
+    const isRetryableError = (err: unknown) => {
       const message = (err as Error)?.message?.toLowerCase?.() ?? '';
       const code = (err as any)?.cause?.code;
-      return code === 'UND_ERR_CONNECT_TIMEOUT' || message.includes('timeout');
+      const errno = (err as any)?.cause?.errno;
+
+      // Retry on transient network errors
+      return (
+        code === 'UND_ERR_CONNECT_TIMEOUT' ||
+        code === 'UND_ERR_SOCKET' ||
+        code === 'ECONNRESET' ||
+        code === 'ETIMEDOUT' ||
+        errno === 'ECONNRESET' ||
+        errno === 'ETIMEDOUT' ||
+        message.includes('timeout') ||
+        message.includes('socket') ||
+        message.includes('fetch failed')
+      );
     };
 
     try {
       return await doFetch();
     } catch (err) {
-      if (!isTimeoutError(err)) throw err;
-      this.logger.warn('[embeddings] timeout calling OpenAI, retrying once...');
+      if (!isRetryableError(err)) throw err;
+      this.logger.warn(
+        `[embeddings] retryable error calling OpenAI (${(err as any)?.cause?.code || (err as Error)?.message}), retrying once...`
+      );
       return await doFetch();
     }
   }

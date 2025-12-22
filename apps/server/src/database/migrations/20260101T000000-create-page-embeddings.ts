@@ -27,6 +27,7 @@ export async function up(db: Kysely<any>): Promise<void> {
 
   await sql`CREATE INDEX IF NOT EXISTS idx_page_embeddings_workspace ON page_embeddings(workspace_id)`.execute(db);
   await sql`CREATE INDEX IF NOT EXISTS idx_page_embeddings_page ON page_embeddings(page_id)`.execute(db);
+  await sql`CREATE INDEX IF NOT EXISTS idx_page_embeddings_space ON page_embeddings(space_id)`.execute(db);
 }
 
 export async function down(db: Kysely<any>): Promise<void> {

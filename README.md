@@ -1,14 +1,55 @@
+## Docmost Fork with Open Source AI implementation
+
+This is an open-source version of Docmost with AI capabilities powered by OpenAI and OpenAI-compatible APIs. You can use it with OpenAI or self-hosted alternatives that implement the OpenAI API specification. Please note this is experimental alpha!
+
+### Required Environment Variables
+
+To enable AI features, configure the following environment variables:
+
+```bash
+OPENAI_API_KEY=sk-proj-xxx
+AI_DRIVER=openai
+AI_MODULE_FLAVOR=oss
+AI_EMBEDDING_MODEL=text-embedding-3-small
+AI_EMBEDDING_DIMENSION=1536
+AI_COMPLETION_MODEL=gpt-5-mini
+```
+
+- `OPENAI_API_KEY` - Your OpenAI API key or compatible API key
+- `AI_DRIVER` - Set to `openai` for OpenAI-compatible APIs
+- `AI_MODULE_FLAVOR` - Set to `oss` for the open-source version
+- `AI_EMBEDDING_MODEL` - The embedding model to use (e.g., `text-embedding-3-small`)
+- `AI_EMBEDDING_DIMENSION` - The dimension of the embedding vectors (e.g., `1536`)
+- `AI_COMPLETION_MODEL` - The completion model for AI-assisted features (e.g., `gpt-5-mini`)
+
+### AI Features Screenshots
+
+**AI Settings Page**
+<p align="center">
+<img alt="AI Settings" src="screenshots/ai-settings.png" width="80%">
+</p>
+
+**AI-Powered Search (Ask AI)**
+<p align="center">
+<img alt="AI Search" src="screenshots/ai-search.png" width="80%">
+</p>
+
+The AI search uses vector embeddings to provide semantic search across your workspace content, with space-level filtering support.
+
+---
+
 <div align="center">
     <h1><b>Docmost</b></h1>
     <p>
         Open-source collaborative wiki and documentation software.
         <br />
-        <a href="https://docmost.com"><strong>Website</strong></a> | 
+        <a href="https://docmost.com"><strong>Website</strong></a> |
         <a href="https://docmost.com/docs"><strong>Documentation</strong></a> |
         <a href="https://twitter.com/DocmostHQ"><strong>Twitter / X</strong></a>
     </p>
 </div>
 <br />
+
 
 ## Getting started
 
