@@ -209,6 +209,24 @@ export class PageRepo {
     }
   }
 
+  async findAllByWorkspace(
+    workspaceId: string,
+    opts?: { includeTextContent?: boolean },
+  ) {
+    let query = this.db
+      .selectFrom('pages')
+      .select(['id', 'spaceId', 'workspaceId', 'title']);
+
+    if (opts?.includeTextContent) {
+      query = query.select('textContent');
+    }
+
+    return query
+      .where('workspaceId', '=', workspaceId)
+      .where('deletedAt', 'is', null)
+      .execute();
+  }
+
   async restorePage(pageId: string, workspaceId: string): Promise<void> {
     // First, check if the page being restored has a deleted parent
     const pageToRestore = await this.db

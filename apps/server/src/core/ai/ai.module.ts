@@ -3,11 +3,24 @@ import { AiController } from './ai.controller';
 import { AiService } from './ai.service';
 import { OpenAiService } from './openai/openai.service';
 import { EnvironmentModule } from '../../integrations/environment/environment.module';
+import { BullModule } from '@nestjs/bullmq';
+import { QueueName } from '../../integrations/queue/constants';
+import { AiQueueProcessor } from './ai.queue.processor';
+import { KyselyModule } from 'nestjs-kysely';
+import { DatabaseModule } from '@docmost/db/database.module';
+import { PageRepo } from '@docmost/db/repos/page/page.repo';
 
 @Module({
-  imports: [EnvironmentModule],
+  imports: [
+    EnvironmentModule,
+    BullModule.registerQueue({
+      name: QueueName.AI_QUEUE,
+    }),
+    KyselyModule.forFeature(),
+    DatabaseModule,
+  ],
   controllers: [AiController],
-  providers: [AiService, OpenAiService],
+  providers: [AiService, OpenAiService, AiQueueProcessor, PageRepo],
 })
 export class AiModule {}
 

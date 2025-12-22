@@ -7,6 +7,9 @@ import {
 import { EnvironmentService } from '../../integrations/environment/environment.service';
 import { AiAskDto, AiGenerateDto } from './dto/ai.dto';
 import { ChatMessage, OpenAiService } from './openai/openai.service';
+import { InjectQueue } from '@nestjs/bullmq';
+import { Queue } from 'bullmq';
+import { QueueJob, QueueName } from '../../integrations/queue/constants';
 
 interface StreamResponder {
   write: (chunk: string) => void;
@@ -20,6 +23,7 @@ export class AiService {
   constructor(
     private readonly environmentService: EnvironmentService,
     private readonly openAiService: OpenAiService,
+    @InjectQueue(QueueName.AI_QUEUE) private readonly aiQueue: Queue,
   ) {}
 
   private ensureOpenAiDriver() {
@@ -82,6 +86,11 @@ export class AiService {
   async askStream(dto: AiAskDto, res: StreamResponder) {
     this.ensureOpenAiDriver();
 
+    // enqueue embedding generation for workspace if needed
+    if (dto.workspaceId) {
+      await this.enqueueWorkspaceEmbedding(dto.workspaceId);
+    }
+
     const model =
       this.environmentService.getAiCompletionModel() || 'gpt-4o-mini';
     const system =
@@ -132,6 +141,16 @@ export class AiService {
     ];
 
     return messages;
+  }
+
+  private async enqueueWorkspaceEmbedding(workspaceId: string) {
+    // fire-and-forget job to ensure embeddings exist; de-dup by jobId
+    const jobId = `workspace-create-embeddings-${workspaceId}`;
+    await this.aiQueue.add(
+      QueueJob.WORKSPACE_CREATE_EMBEDDINGS,
+      { workspaceId },
+      { jobId, removeOnComplete: true, removeOnFail: true },
+    );
   }
 }
 
