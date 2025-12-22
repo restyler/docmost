@@ -11,16 +11,20 @@ import { useQuery } from "@tanstack/react-query";
 import api from "@/lib/api-client.ts";
 import { IconInfoCircle } from "@tabler/icons-react";
 
-export default function EnableAiSearch() {
+type AiStatus = { embeddingsTable: boolean; flavor: string; driver: string } | undefined;
+
+export default function EnableAiSearch({ status }: { status?: AiStatus }) {
   const { t } = useTranslation();
 
-  const { data: status } = useQuery({
+  const { data: statusFetch } = useQuery({
     queryKey: ["ai-status"],
     queryFn: async () => {
       const res = await api.get("/ai/status");
       return res.data as { embeddingsTable: boolean; flavor: string; driver: string };
     },
+    enabled: !status,
   });
+  const effectiveStatus = status ?? statusFetch;
 
   return (
     <>
@@ -37,7 +41,7 @@ export default function EnableAiSearch() {
         <AiSearchToggle />
       </Group>
 
-      {status && !status.embeddingsTable && (
+      {effectiveStatus && !effectiveStatus.embeddingsTable && (
         <Alert
           icon={<IconInfoCircle />}
           color="red"
