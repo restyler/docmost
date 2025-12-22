@@ -11,7 +11,14 @@ import { useQuery } from "@tanstack/react-query";
 import api from "@/lib/api-client.ts";
 import { IconInfoCircle } from "@tabler/icons-react";
 
-type AiStatus = { embeddingsTable: boolean; flavor: string; driver: string } | undefined;
+type AiStatus =
+  | {
+      embeddingsTable: boolean;
+      flavor: string;
+      driver: string;
+      queueCounts?: Record<string, number>;
+    }
+  | undefined;
 
 export default function EnableAiSearch({ status }: { status?: AiStatus }) {
   const { t } = useTranslation();
@@ -20,7 +27,12 @@ export default function EnableAiSearch({ status }: { status?: AiStatus }) {
     queryKey: ["ai-status"],
     queryFn: async () => {
       const res = await api.get("/ai/status");
-      return res.data as { embeddingsTable: boolean; flavor: string; driver: string };
+      return res.data as {
+        embeddingsTable: boolean;
+        flavor: string;
+        driver: string;
+        queueCounts?: Record<string, number>;
+      };
     },
     enabled: !status,
   });
@@ -49,6 +61,22 @@ export default function EnableAiSearch({ status }: { status?: AiStatus }) {
           title={t("pgvector missing")}
         >
           {t("pgvector extension or page_embeddings table is missing on the server.")}
+        </Alert>
+      )}
+
+      {effectiveStatus && effectiveStatus.queueCounts && (
+        <Alert
+          icon={<IconInfoCircle />}
+          color="gray"
+          mt="md"
+          title={t("AI indexing queue")}
+        >
+          <Text size="sm" c="dimmed">
+            {t("Waiting")}: {effectiveStatus.queueCounts.waiting ?? 0} •{" "}
+            {t("Active")}: {effectiveStatus.queueCounts.active ?? 0} •{" "}
+            {t("Completed")}: {effectiveStatus.queueCounts.completed ?? 0} •{" "}
+            {t("Failed")}: {effectiveStatus.queueCounts.failed ?? 0}
+          </Text>
         </Alert>
       )}
     </>

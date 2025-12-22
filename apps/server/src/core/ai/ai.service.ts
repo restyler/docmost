@@ -159,10 +159,23 @@ export class AiService {
 
   async status() {
     const embeddingsTable = await isPageEmbeddingsTableExists(this.db);
+    let queueCounts: Record<string, number> = {};
+    try {
+      queueCounts = await this.aiQueue.getJobCounts(
+        'waiting',
+        'active',
+        'completed',
+        'failed',
+        'delayed',
+      );
+    } catch (err) {
+      this.logger.debug(`Failed to read AI queue counts`, err as Error);
+    }
     return {
       driver: this.environmentService.getAiDriver(),
       flavor: this.environmentService.getAiModuleFlavor(),
       embeddingsTable,
+      queueCounts,
     };
   }
 }
