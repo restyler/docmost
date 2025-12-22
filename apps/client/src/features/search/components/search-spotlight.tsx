@@ -62,6 +62,9 @@ export function SearchSpotlight({ spaceId }: SearchSpotlightProps) {
     error: aiSearchError,
     streamingAnswer,
     streamingSources,
+    streamingMeta,
+    latestSources,
+    latestMeta,
     clearStreaming,
   } = useAiSearch();
 
@@ -172,6 +175,8 @@ export function SearchSpotlight({ spaceId }: SearchSpotlightProps) {
                   isLoading={isAiLoading}
                   streamingAnswer={streamingAnswer}
                   streamingSources={streamingSources}
+                  latestSources={latestSources}
+                  streamingMeta={latestMeta || streamingMeta}
                 />
               )}
               {query.length > 0 && !isAiLoading && !aiSearchResult && (

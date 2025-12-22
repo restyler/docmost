@@ -8,7 +8,7 @@ import {
   Res,
   UseGuards,
 } from '@nestjs/common';
-import { Response } from 'express';
+import { FastifyReply } from 'fastify';
 import { AiService } from './ai.service';
 import { AiAskDto, AiGenerateDto } from './dto/ai.dto';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
@@ -30,16 +30,16 @@ export class AiController {
   @Post('generate/stream')
   async generateStream(
     @Body() dto: AiGenerateDto,
-    @Res() res: Response,
+    @Res() res: FastifyReply,
   ): Promise<void> {
-    res.set({
+    res.raw.writeHead(200, {
       'Content-Type': 'text/event-stream',
       'Cache-Control': 'no-cache',
       Connection: 'keep-alive',
     });
-    res.flushHeaders();
+    res.raw.flushHeaders?.();
 
-    await this.aiService.generateStream(dto, res);
+    await this.aiService.generateStream(dto, res.raw);
   }
 
   @HttpCode(HttpStatus.OK)
@@ -47,19 +47,19 @@ export class AiController {
   async ask(
     @Body() dto: AiAskDto,
     @AuthWorkspace() workspace: Workspace,
-    @Res() res: Response,
+    @Res() res: FastifyReply,
   ): Promise<void> {
-    res.set({
+    res.raw.writeHead(200, {
       'Content-Type': 'text/event-stream',
       'Cache-Control': 'no-cache',
       Connection: 'keep-alive',
     });
-    res.flushHeaders();
+    res.raw.flushHeaders?.();
 
     // Ensure workspace context is respected if needed later
     dto.workspaceId = dto.workspaceId || workspace?.id;
 
-    await this.aiService.askStream(dto, res);
+    await this.aiService.askStream(dto, res.raw);
   }
 
   @HttpCode(HttpStatus.OK)

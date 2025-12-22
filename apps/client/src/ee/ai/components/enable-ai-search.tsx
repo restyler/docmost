@@ -142,14 +142,21 @@ export function AiSearchToggle({ size, label, status }: AiSearchToggleProps) {
   };
 
   return (
-    <Switch
-      size={size}
-      label={label}
-      labelPosition="left"
-      defaultChecked={checked}
-      onChange={handleChange}
-      disabled={!hasAccess}
-      aria-label={t("Toggle AI search")}
-    />
+    <div>
+      <Switch
+        size={size}
+        label={label}
+        labelPosition="left"
+        defaultChecked={checked}
+        onChange={handleChange}
+        disabled={!hasAccess}
+        aria-label={t("Toggle AI search")}
+      />
+      <Text size="xs" c="dimmed" mt={4}>
+        {t(
+          "Re-enabling AI search will trigger a full re-index of workspace content.",
+        )}
+      </Text>
+    </div>
   );
 }

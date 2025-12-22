@@ -4,6 +4,7 @@ import {
   InternalServerErrorException,
   Logger,
 } from '@nestjs/common';
+import { sql } from 'kysely';
 import { EnvironmentService } from '../../integrations/environment/environment.service';
 import { AiAskDto, AiGenerateDto } from './dto/ai.dto';
 import { ChatMessage, OpenAiService } from './openai/openai.service';
@@ -22,6 +23,8 @@ interface StreamResponder {
 @Injectable()
 export class AiService {
   private readonly logger = new Logger(AiService.name);
+  private readonly CHUNK_SIZE = 1500;
+  private readonly PAGE_LINK_PREFIX = '/page/';
 
   constructor(
     private readonly environmentService: EnvironmentService,
@@ -54,7 +57,6 @@ export class AiService {
     return this.openAiService.chatCompletion({
       model,
       messages,
-      temperature: 0.3,
     });
   }
 
@@ -70,7 +72,6 @@ export class AiService {
         {
           model,
           messages,
-          temperature: 0.3,
         },
         (chunk) => {
           if (chunk?.content) {
@@ -90,29 +91,73 @@ export class AiService {
   async askStream(dto: AiAskDto, res: StreamResponder) {
     this.ensureOpenAiDriver();
 
-    // enqueue embedding generation for workspace if needed
-    if (dto.workspaceId) {
-      await this.enqueueWorkspaceEmbedding(dto.workspaceId);
-    }
+    // We do not enqueue indexing here; ask should only read existing data.
+
+    const contexts =
+      (await isPageEmbeddingsTableExists(this.db)) && dto.workspaceId
+        ? await this.retrieveContexts(dto.query, dto.workspaceId)
+        : [];
+    const uniquePageCount = new Set(contexts.map((c) => c.pageId)).size;
 
     const model =
       this.environmentService.getAiCompletionModel() || 'gpt-4o-mini';
     const system =
-      'You are a helpful documentation assistant. Answer concisely. If you are unsure, say you do not have enough information.';
+      'You are a helpful documentation assistant. Use the provided context snippets when relevant. Answer concisely. If you are unsure, say you do not have enough information.';
+    const contextBlock =
+      contexts.length > 0
+        ? contexts
+            .map(
+              (c, idx) =>
+                `Source #${idx + 1} (page ${c.pageId}${c.title ? `: ${c.title}` : ''}):\n${c.text}\nLink: ${c.link}`,
+            )
+            .join('\n---\n')
+        : 'No relevant context available.';
     const messages: ChatMessage[] = [
       { role: 'system', content: system },
       {
         role: 'user',
-        content: dto.query,
+        content: `Context:\n${contextBlock}\n\nQuestion: ${dto.query}`,
       },
     ];
+
+    // Log RAG flow for debugging
+    const promptPreview = messages
+      .map((m) => `${m.role}: ${m.content}`)
+      .join(' | ')
+      .slice(0, 500);
+    this.logger.log(
+      `[ask] workspace=${dto.workspaceId ?? 'n/a'} ragPieces=${contexts.length} prompt="${promptPreview}"`,
+    );
+
+    // Send context metadata/sources to client early for transparency
+    try {
+      const sourcePayload = contexts.map((c) => ({
+        pageId: c.pageId,
+        title: c.title,
+        slugId: c.slugId,
+        spaceSlug: c.spaceSlug,
+        link: c.link,
+        chunkIndex: c.chunkIndex,
+        chunkCount: c.chunkCount,
+        excerpt: c.text,
+        similarity: c.distance != null ? 1 / (1 + c.distance) : undefined,
+        distance: c.distance,
+      }));
+      res.write(
+        `data: ${JSON.stringify({
+          sources: sourcePayload,
+          meta: { chunkCount: contexts.length, pageCount: uniquePageCount },
+        })}\n\n`,
+      );
+    } catch (err) {
+      this.logger.warn('[ask] failed to emit source metadata', err as Error);
+    }
 
     try {
       await this.openAiService.chatCompletionStream(
         {
           model,
           messages,
-          temperature: 0.2,
         },
         (chunk) => {
           if (chunk?.content) {
@@ -129,6 +174,140 @@ export class AiService {
     } finally {
       res.end();
     }
+  }
+
+  private async retrieveContexts(query: string, workspaceId: string) {
+    const embeddingModel = this.environmentService.getAiEmbeddingModel();
+    if (!embeddingModel) {
+      this.logger.warn('[ask] AI_EMBEDDING_MODEL not set; skipping retrieval');
+      return [];
+    }
+
+    const queryEmbedding = await this.createEmbedding(query, embeddingModel);
+    const vectorLiteral = `[${queryEmbedding.join(',')}]`;
+
+    const rows = await this.db
+      .selectFrom('pageEmbeddings as pe')
+      .innerJoin('pages as p', 'p.id', 'pe.pageId')
+      .innerJoin('spaces as s', 's.id', 'p.spaceId')
+      .select([
+        'pe.pageId as pageId',
+        'pe.spaceId as spaceId',
+        'pe.chunkIndex as chunkIndex',
+        'pe.chunkLength as chunkLength',
+        'p.textContent as textContent',
+        'p.title as title',
+        'p.slugId as slugId',
+        'pe.metadata as metadata',
+        's.slug as spaceSlug',
+        sql<number>`pe.embedding <-> ${sql`${vectorLiteral}::vector`}`.as(
+          'distance',
+        ),
+      ])
+      .where('pe.workspaceId', '=', workspaceId)
+      .where('pe.deletedAt', 'is', null)
+      .where('p.deletedAt', 'is', null)
+      .orderBy(sql`pe.embedding <-> ${sql`${vectorLiteral}::vector`}`)
+      .limit(8)
+      .execute();
+
+    const pageIds = Array.from(new Set(rows.map((r) => r.pageId)));
+    const chunkCounts = new Map<string, number>();
+    if (pageIds.length) {
+      const counts = await this.db
+        .selectFrom('pageEmbeddings')
+        .select([
+          'pageId',
+          (eb) => eb.fn.count<number>('id').as('count'),
+        ])
+        .where('workspaceId', '=', workspaceId)
+        .where('pageId', 'in', pageIds)
+        .groupBy('pageId')
+        .execute();
+      counts.forEach((c) => chunkCounts.set(c.pageId as any, Number(c.count)));
+    }
+
+    const contexts = rows.map((row) => {
+      const meta = (row as any).metadata as any;
+      const slugId = meta?.slugId ?? (row as any).slugId;
+      const link =
+        slugId || row.pageId
+          ? `${this.PAGE_LINK_PREFIX}${slugId ?? row.pageId}`
+          : '';
+      const chunks = this.chunkText(row.textContent || '');
+      const text = chunks[row.chunkIndex] ?? row.textContent?.slice(0, this.CHUNK_SIZE) ?? '';
+      return {
+        pageId: row.pageId,
+        spaceId: row.spaceId,
+        title: row.title,
+        spaceSlug: (row as any).spaceSlug,
+        link,
+        slugId,
+        chunkIndex: row.chunkIndex,
+        distance: (row as any).distance as number | undefined,
+        chunkCount: chunkCounts.get(row.pageId) ?? undefined,
+        text,
+      };
+    });
+
+    this.logger.log(
+      `[ask] retrieved ${contexts.length} context chunks for workspace=${workspaceId}`,
+    );
+
+    return contexts;
+  }
+
+  private async createEmbedding(text: string, model: string): Promise<number[]> {
+    const apiKey = this.environmentService.getOpenAiApiKey();
+    if (!apiKey) {
+      throw new Error('OPENAI_API_KEY is required for embeddings');
+    }
+    const baseUrl =
+      this.environmentService.getOpenAiApiUrl() || 'https://api.openai.com/v1';
+
+    const response = await fetch(`${baseUrl}/embeddings`, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${apiKey}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        model,
+        input: text,
+      }),
+    });
+
+    if (!response.ok) {
+      const txt = await response.text();
+      throw new Error(`Embedding failed: ${response.status} ${txt}`);
+    }
+
+    const json = (await response.json()) as any;
+    const vector = json?.data?.[0]?.embedding as number[] | undefined;
+    if (!vector) {
+      throw new Error('Embedding response missing embedding vector');
+    }
+    return vector;
+  }
+
+  private chunkText(text: string): string[] {
+    if (!text) return [];
+    const normalized = text.replace(/\s+/g, ' ').trim();
+    const words = normalized.split(' ');
+    const chunks: string[] = [];
+    let buffer: string[] = [];
+
+    for (const word of words) {
+      if (buffer.join(' ').length + word.length + 1 > this.CHUNK_SIZE) {
+        chunks.push(buffer.join(' '));
+        buffer = [];
+      }
+      buffer.push(word);
+    }
+    if (buffer.length) {
+      chunks.push(buffer.join(' '));
+    }
+    return chunks;
   }
 
   private buildMessages(dto: AiGenerateDto): ChatMessage[] {
@@ -196,7 +375,9 @@ export class AiService {
           .executeTakeFirst();
 
         const totalPages = totalPagesRes?.count ?? 0;
-        const pagesWithEmbeddings = pagesWithEmbeddingsRes?.count ?? 0;
+        const pagesWithEmbeddings = Number(
+          pagesWithEmbeddingsRes?.count ?? 0,
+        );
         const pagesWithoutEmbeddings = Math.max(
           0,
           totalPages - pagesWithEmbeddings,

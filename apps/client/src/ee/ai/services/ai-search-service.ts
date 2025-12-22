@@ -13,11 +13,19 @@ export interface IAiSearchResponse {
     chunkIndex: number;
     excerpt: string;
   }>;
+  meta?: {
+    chunkCount?: number;
+    pageCount?: number;
+  };
 }
 
 export async function askAi(
   params: IPageSearchParams,
-  onChunk?: (chunk: { content?: string; sources?: any[] }) => void,
+  onChunk?: (chunk: {
+    content?: string;
+    sources?: any[];
+    meta?: IAiSearchResponse["meta"];
+  }) => void,
 ): Promise<IAiSearchResponse> {
   const response = await fetch("/api/ai/ask", {
     method: "POST",
@@ -37,6 +45,7 @@ export async function askAi(
 
   let answer = "";
   let sources: any[] = [];
+  let meta: IAiSearchResponse["meta"] = {};
   let buffer = "";
 
   if (reader) {
@@ -68,6 +77,10 @@ export async function askAi(
               sources = parsed.sources;
               onChunk?.({ sources: parsed.sources });
             }
+            if (parsed.meta) {
+              meta = parsed.meta;
+              onChunk?.({ meta: parsed.meta });
+            }
           } catch (e) {
             if (e instanceof Error) {
               throw e;
@@ -79,5 +92,5 @@ export async function askAi(
     }
   }
 
-  return { answer, sources };
+  return { answer, sources, meta };
 }

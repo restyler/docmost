@@ -32,25 +32,35 @@ export class AiQueueProcessor extends WorkerHost {
   }
 
   async process(job: any): Promise<void> {
-    switch (job.name) {
-      case QueueJob.WORKSPACE_CREATE_EMBEDDINGS:
-        await this.handleWorkspaceCreateEmbeddings(job.data as WorkspaceEmbeddingPayload);
-        break;
-      case QueueJob.WORKSPACE_DELETE_EMBEDDINGS:
-        await this.handleWorkspaceDeleteEmbeddings(job.data as WorkspaceEmbeddingPayload);
-        break;
-      case QueueJob.PAGE_CREATED:
-      case QueueJob.PAGE_RESTORED:
-      case QueueJob.PAGE_CONTENT_UPDATED:
-      case QueueJob.PAGE_MOVED_TO_SPACE:
-        await this.handleGeneratePageEmbeddings(job.data as PageEmbeddingPayload);
-        break;
-      case QueueJob.PAGE_SOFT_DELETED:
-      case QueueJob.PAGE_DELETED:
-        await this.handleDeletePageEmbeddings(job.data as PageEmbeddingPayload);
-        break;
-      default:
-        this.logger.debug(`Unhandled AI job ${job.name}`);
+    this.logger.log(`AI queue job started: ${job.name} id=${job.id}`);
+    try {
+      switch (job.name) {
+        case QueueJob.WORKSPACE_CREATE_EMBEDDINGS:
+          await this.handleWorkspaceCreateEmbeddings(job.data as WorkspaceEmbeddingPayload);
+          break;
+        case QueueJob.WORKSPACE_DELETE_EMBEDDINGS:
+          await this.handleWorkspaceDeleteEmbeddings(job.data as WorkspaceEmbeddingPayload);
+          break;
+        case QueueJob.PAGE_CREATED:
+        case QueueJob.PAGE_RESTORED:
+        case QueueJob.PAGE_CONTENT_UPDATED:
+        case QueueJob.PAGE_MOVED_TO_SPACE:
+          await this.handleGeneratePageEmbeddings(job.data as PageEmbeddingPayload);
+          break;
+        case QueueJob.PAGE_SOFT_DELETED:
+        case QueueJob.PAGE_DELETED:
+          await this.handleDeletePageEmbeddings(job.data as PageEmbeddingPayload);
+          break;
+        default:
+          this.logger.debug(`Unhandled AI job ${job.name}`);
+      }
+      this.logger.log(`AI queue job finished: ${job.name} id=${job.id}`);
+    } catch (err) {
+      this.logger.error(
+        `AI queue job failed: ${job.name} id=${job.id} error=${(err as Error)?.message}`,
+        err as Error,
+      );
+      throw err;
     }
   }
 
@@ -64,7 +74,9 @@ export class AiQueueProcessor extends WorkerHost {
   private async handleWorkspaceCreateEmbeddings(payload: WorkspaceEmbeddingPayload) {
     await this.ensureTable();
     // Generate embeddings for all pages in workspace (simple batch)
-    const pages = await this.pageRepo.findAllByWorkspace(payload.workspaceId);
+    const pages = await this.pageRepo.findAllByWorkspace(payload.workspaceId, {
+      includeTextContent: true,
+    });
     const pageIds = pages.map((p) => p.id);
     if (!pageIds.length) return;
     await this.generateEmbeddingsForPages(pageIds, payload.workspaceId);
@@ -104,30 +116,56 @@ export class AiQueueProcessor extends WorkerHost {
     // fetch pages content
     const pages = await this.db
       .selectFrom('pages')
-      .select(['id', 'title', 'textContent'])
+      .select(['id', 'title', 'textContent', 'spaceId', 'slugId'])
       .where('id', 'in', pageIds)
       .where('workspaceId', '=', workspaceId)
       .where('deletedAt', 'is', null)
       .execute();
 
+    // remove old embeddings to avoid duplicates on re-index
+    await this.db
+      .deleteFrom('pageEmbeddings')
+      .where('workspaceId', '=', workspaceId)
+      .where('pageId', 'in', pageIds)
+      .execute();
+
     for (const page of pages) {
       const chunks = this.chunkText(page.textContent || '', 1500);
+      if (!chunks.length) {
+        this.logger.debug(`No text to embed for page ${page.id}`);
+        continue;
+      }
+      this.logger.log(
+        `[embeddings] page=${page.id} workspace=${workspaceId} chunks=${chunks.length} model=${model}`,
+      );
       let chunkIndex = 0;
       for (const chunk of chunks) {
+        const preview = chunk.slice(0, 160).replace(/\s+/g, ' ');
+        this.logger.debug(
+          `[embeddings] request model=${model} page=${page.id} chunk=${chunkIndex} len=${chunk.length} preview="${preview}"`,
+        );
         const embedding = await this.createEmbedding(chunk, model);
+        const vectorLiteral = `[${embedding.join(',')}]`;
         await this.db
           .insertInto('pageEmbeddings')
           .values({
             pageId: page.id,
             workspaceId,
-            spaceId: '', // unknown without join; set empty
-            attachmentId: '',
+            spaceId: page.spaceId,
+            attachmentId: null,
             modelName: model,
             modelDimensions: dimension,
             chunkIndex,
             chunkStart: 0,
             chunkLength: chunk.length,
-            embedding,
+            embedding: sql`${vectorLiteral}::vector`,
+            metadata: {
+              pageId: page.id,
+              spaceId: page.spaceId,
+              slugId: page['slugId'],
+              title: page.title,
+              chunkIndex,
+            },
           } as any)
           .execute();
         chunkIndex += 1;
@@ -143,29 +181,45 @@ export class AiQueueProcessor extends WorkerHost {
     const baseUrl =
       this.environmentService.getOpenAiApiUrl() || 'https://api.openai.com/v1';
 
-    const response = await fetch(`${baseUrl}/embeddings`, {
-      method: 'POST',
-      headers: {
-        Authorization: `Bearer ${apiKey}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        model,
-        input: text,
-      }),
-    });
+    const doFetch = async () => {
+      const response = await fetch(`${baseUrl}/embeddings`, {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${apiKey}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          model,
+          input: text,
+        }),
+      });
 
-    if (!response.ok) {
-      const txt = await response.text();
-      throw new Error(`Embedding failed: ${response.status} ${txt}`);
-    }
+      if (!response.ok) {
+        const txt = await response.text();
+        throw new Error(`Embedding failed: ${response.status} ${txt}`);
+      }
 
-    const json = (await response.json()) as any;
-    const vector = json?.data?.[0]?.embedding as number[] | undefined;
-    if (!vector) {
-      throw new Error('Embedding response missing embedding vector');
+      const json = (await response.json()) as any;
+      const vector = json?.data?.[0]?.embedding as number[] | undefined;
+      if (!vector) {
+        throw new Error('Embedding response missing embedding vector');
+      }
+      return vector;
+    };
+
+    const isTimeoutError = (err: unknown) => {
+      const message = (err as Error)?.message?.toLowerCase?.() ?? '';
+      const code = (err as any)?.cause?.code;
+      return code === 'UND_ERR_CONNECT_TIMEOUT' || message.includes('timeout');
+    };
+
+    try {
+      return await doFetch();
+    } catch (err) {
+      if (!isTimeoutError(err)) throw err;
+      this.logger.warn('[embeddings] timeout calling OpenAI, retrying once...');
+      return await doFetch();
     }
-    return vector;
   }
 
   private chunkText(text: string, chunkSize: number): string[] {
