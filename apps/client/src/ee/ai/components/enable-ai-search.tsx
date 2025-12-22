@@ -38,7 +38,7 @@ export default function EnableAiSearch({ status }: { status?: AiStatus }) {
           </Text>
         </div>
 
-        <AiSearchToggle />
+        <AiSearchToggle status={effectiveStatus} />
       </Group>
 
       {effectiveStatus && !effectiveStatus.embeddingsTable && (
@@ -58,13 +58,17 @@ export default function EnableAiSearch({ status }: { status?: AiStatus }) {
 interface AiSearchToggleProps {
   size?: MantineSize;
   label?: string;
+  status?: AiStatus;
 }
-export function AiSearchToggle({ size, label }: AiSearchToggleProps) {
+export function AiSearchToggle({ size, label, status }: AiSearchToggleProps) {
   const { t } = useTranslation();
   const [workspace, setWorkspace] = useAtom(workspaceAtom);
   const [checked, setChecked] = useState(workspace?.settings?.ai?.search);
   const { hasLicenseKey } = useLicense();
-  const isOssAi = getAiModuleFlavor() === "oss";
+  const isOssAiFromStatus = status?.flavor === "oss";
+  const isOssAiEnv = getAiModuleFlavor() === "oss";
+  const isOssAi =
+    typeof isOssAiFromStatus === "boolean" ? isOssAiFromStatus : isOssAiEnv;
 
   const hasAccess = isOssAi || isCloud() || (!isCloud() && hasLicenseKey);
 
