@@ -6,12 +6,12 @@ import {
 } from '@nestjs/common';
 import { EnvironmentService } from '../../../integrations/environment/environment.service';
 
-interface ChatMessage {
+export interface ChatMessage {
   role: 'system' | 'user' | 'assistant';
   content: string;
 }
 
-interface ChatCompletionRequest {
+export interface ChatCompletionRequest {
   model: string;
   messages: ChatMessage[];
   temperature?: number;

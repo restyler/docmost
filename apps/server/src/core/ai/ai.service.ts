@@ -6,7 +6,7 @@ import {
 } from '@nestjs/common';
 import { EnvironmentService } from '../../integrations/environment/environment.service';
 import { AiAskDto, AiGenerateDto } from './dto/ai.dto';
-import { OpenAiService } from './openai/openai.service';
+import { ChatMessage, OpenAiService } from './openai/openai.service';
 
 interface StreamResponder {
   write: (chunk: string) => void;
@@ -86,7 +86,7 @@ export class AiService {
       this.environmentService.getAiCompletionModel() || 'gpt-4o-mini';
     const system =
       'You are a helpful documentation assistant. Answer concisely. If you are unsure, say you do not have enough information.';
-    const messages = [
+    const messages: ChatMessage[] = [
       { role: 'system', content: system },
       {
         role: 'user',
@@ -118,7 +118,7 @@ export class AiService {
     }
   }
 
-  private buildMessages(dto: AiGenerateDto) {
+  private buildMessages(dto: AiGenerateDto): ChatMessage[] {
     const system =
       'You are a helpful writing assistant. Keep responses concise and in the same language as the input.';
     const userPrompt =
@@ -126,10 +126,12 @@ export class AiService {
       dto.content ||
       'Help improve the following content while keeping meaning unchanged.';
 
-    return [
+    const messages: ChatMessage[] = [
       { role: 'system', content: system },
       { role: 'user', content: userPrompt },
     ];
+
+    return messages;
   }
 }
 
