@@ -24,14 +24,14 @@ AI_COMPLETION_MODEL=gpt-5-mini
 
 ### AI Features Screenshots
 
-**AI Settings Page**
-<p align="center">
-<img alt="AI Settings" src="screenshots/ai-settings.png" width="80%">
-</p>
-
 **AI-Powered Search (Ask AI)**
 <p align="center">
-<img alt="AI Search" src="screenshots/ai-search.png" width="80%">
+<img alt="AI Search" src="screenshots/ai-settings.png" width="80%">
+</p>
+
+**AI Settings Page**
+<p align="center">
+<img alt="AI Settings" src="screenshots/ai-search.png" width="80%">
 </p>
 
 The AI search uses vector embeddings to provide semantic search across your workspace content, with space-level filtering support.
