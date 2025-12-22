@@ -1,6 +1,7 @@
 import {
   Body,
   Controller,
+  Get,
   HttpCode,
   HttpStatus,
   Post,
@@ -59,6 +60,12 @@ export class AiController {
     dto.workspaceId = dto.workspaceId || workspace?.id;
 
     await this.aiService.askStream(dto, res);
+  }
+
+  @HttpCode(HttpStatus.OK)
+  @Get('status')
+  async status() {
+    return this.aiService.status();
   }
 }
 

@@ -1,5 +1,5 @@
 import { Helmet } from "react-helmet-async";
-import { getAppName, isCloud } from "@/lib/config.ts";
+import { getAppName, getAiModuleFlavor, isCloud } from "@/lib/config.ts";
 import SettingsTitle from "@/components/settings/settings-title.tsx";
 import React from "react";
 import useUserRole from "@/hooks/use-user-role.tsx";
@@ -13,12 +13,13 @@ export default function AiSettings() {
   const { t } = useTranslation();
   const { isAdmin } = useUserRole();
   const { hasLicenseKey } = useLicense();
+  const isOssAi = getAiModuleFlavor() === "oss";
 
   if (!isAdmin) {
     return null;
   }
 
-  const hasAccess = isCloud() || (!isCloud() && hasLicenseKey);
+  const hasAccess = isOssAi || isCloud() || (!isCloud() && hasLicenseKey);
 
   return (
     <>

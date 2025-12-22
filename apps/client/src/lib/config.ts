@@ -99,6 +99,10 @@ export function getPostHogKey() {
   return getConfigValue("POSTHOG_KEY");
 }
 
+export function getAiModuleFlavor(): string {
+  return (getConfigValue("AI_MODULE_FLAVOR", "enterprise") || "enterprise").toLowerCase();
+}
+
 function getConfigValue(key: string, defaultValue: string = undefined): string {
   const rawValue = import.meta.env.DEV
     ? process?.env?.[key]

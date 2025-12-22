@@ -1,15 +1,26 @@
-import { Group, Text, Switch, MantineSize, Title } from "@mantine/core";
+import { Group, Text, Switch, MantineSize, Title, Alert } from "@mantine/core";
 import { useAtom } from "jotai";
 import { workspaceAtom } from "@/features/user/atoms/current-user-atom.ts";
 import React, { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { updateWorkspace } from "@/features/workspace/services/workspace-service.ts";
 import { notifications } from "@mantine/notifications";
-import { isCloud } from "@/lib/config.ts";
+import { getAiModuleFlavor, isCloud } from "@/lib/config.ts";
 import useLicense from "@/ee/hooks/use-license.tsx";
+import { useQuery } from "@tanstack/react-query";
+import api from "@/lib/api-client.ts";
+import { IconInfoCircle } from "@tabler/icons-react";
 
 export default function EnableAiSearch() {
   const { t } = useTranslation();
+
+  const { data: status } = useQuery({
+    queryKey: ["ai-status"],
+    queryFn: async () => {
+      const res = await api.get("/ai/status");
+      return res.data as { embeddingsTable: boolean; flavor: string; driver: string };
+    },
+  });
 
   return (
     <>
@@ -25,6 +36,17 @@ export default function EnableAiSearch() {
 
         <AiSearchToggle />
       </Group>
+
+      {status && !status.embeddingsTable && (
+        <Alert
+          icon={<IconInfoCircle />}
+          color="red"
+          mt="md"
+          title={t("pgvector missing")}
+        >
+          {t("pgvector extension or page_embeddings table is missing on the server.")}
+        </Alert>
+      )}
     </>
   );
 }
@@ -38,8 +60,9 @@ export function AiSearchToggle({ size, label }: AiSearchToggleProps) {
   const [workspace, setWorkspace] = useAtom(workspaceAtom);
   const [checked, setChecked] = useState(workspace?.settings?.ai?.search);
   const { hasLicenseKey } = useLicense();
+  const isOssAi = getAiModuleFlavor() === "oss";
 
-  const hasAccess = isCloud() || (!isCloud() && hasLicenseKey);
+  const hasAccess = isOssAi || isCloud() || (!isCloud() && hasLicenseKey);
 
   const handleChange = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const value = event.currentTarget.checked;

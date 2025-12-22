@@ -10,6 +10,9 @@ import { ChatMessage, OpenAiService } from './openai/openai.service';
 import { InjectQueue } from '@nestjs/bullmq';
 import { Queue } from 'bullmq';
 import { QueueJob, QueueName } from '../../integrations/queue/constants';
+import { InjectKysely } from 'nestjs-kysely';
+import { KyselyDB } from '@docmost/db/types/kysely.types';
+import { isPageEmbeddingsTableExists } from '@docmost/db/helpers/helpers';
 
 interface StreamResponder {
   write: (chunk: string) => void;
@@ -24,6 +27,7 @@ export class AiService {
     private readonly environmentService: EnvironmentService,
     private readonly openAiService: OpenAiService,
     @InjectQueue(QueueName.AI_QUEUE) private readonly aiQueue: Queue,
+    @InjectKysely() private readonly db: KyselyDB,
   ) {}
 
   private ensureOpenAiDriver() {
@@ -151,6 +155,15 @@ export class AiService {
       { workspaceId },
       { jobId, removeOnComplete: true, removeOnFail: true },
     );
+  }
+
+  async status() {
+    const embeddingsTable = await isPageEmbeddingsTableExists(this.db);
+    return {
+      driver: this.environmentService.getAiDriver(),
+      flavor: this.environmentService.getAiModuleFlavor(),
+      embeddingsTable,
+    };
   }
 }
 
